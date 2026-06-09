@@ -25,6 +25,12 @@ GOOGLE_SHEET_ID: str = os.getenv(
 # Path to the Google Service Account credentials JSON
 GOOGLE_CREDENTIALS_PATH: str = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
 
+# Raw Google credentials JSON string (useful for cloud environments)
+GOOGLE_CREDENTIALS_JSON: str = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+
+# Timezone for scheduled tasks (defaults to Asia/Kolkata)
+TIMEZONE: str = os.getenv("TIMEZONE", "Asia/Kolkata")
+
 # Admin Telegram user IDs who can use /broadcast, /interns, /stats
 ADMIN_IDS: list[int] = [
     int(uid.strip())
@@ -39,7 +45,10 @@ def validate() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set in .env")
     if not GOOGLE_SHEET_ID:
         raise RuntimeError("GOOGLE_SHEET_ID is not set in .env")
-    if not os.path.exists(GOOGLE_CREDENTIALS_PATH):
+    
+    # Check if either credentials JSON string or credentials file is available
+    if not GOOGLE_CREDENTIALS_JSON and not os.path.exists(GOOGLE_CREDENTIALS_PATH):
         raise FileNotFoundError(
-            f"Google credentials file not found at: {GOOGLE_CREDENTIALS_PATH}"
+            f"Google credentials file not found at: {GOOGLE_CREDENTIALS_PATH} and GOOGLE_CREDENTIALS_JSON is not set in the environment."
         )
+

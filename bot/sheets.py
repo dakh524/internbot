@@ -21,10 +21,14 @@ Expected sheet columns (row 1 = headers):
 
 from __future__ import annotations
 
+import json
+import logging
 import gspread
 from google.oauth2.service_account import Credentials
 
-from bot.config import GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_ID
+from bot.config import GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON
+
+logger = logging.getLogger(__name__)
 
 # Google API scopes required for Sheets access
 _SCOPES = [
@@ -40,12 +44,23 @@ def _get_worksheet() -> gspread.Worksheet:
     """Return (and cache) the first worksheet of the configured spreadsheet."""
     global _worksheet
     if _worksheet is None:
-        creds = Credentials.from_service_account_file(
-            GOOGLE_CREDENTIALS_PATH, scopes=_SCOPES
-        )
-        client = gspread.authorize(creds)
-        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
-        _worksheet = spreadsheet.sheet1  # Uses the first sheet
+        try:
+            if GOOGLE_CREDENTIALS_JSON:
+                logger.info("Initializing Google Credentials from GOOGLE_CREDENTIALS_JSON env var.")
+                info = json.loads(GOOGLE_CREDENTIALS_JSON)
+                creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
+            else:
+                logger.info(f"Initializing Google Credentials from file: {GOOGLE_CREDENTIALS_PATH}")
+                creds = Credentials.from_service_account_file(
+                    GOOGLE_CREDENTIALS_PATH, scopes=_SCOPES
+                )
+            client = gspread.authorize(creds)
+            spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+            _worksheet = spreadsheet.sheet1  # Uses the first sheet
+            logger.info("Successfully connected to Google Sheet.")
+        except Exception as e:
+            logger.error(f"Failed to connect to Google Sheet: {e}", exc_info=True)
+            raise e
     return _worksheet
 
 
@@ -265,14 +280,24 @@ def _get_unregistered_worksheet() -> gspread.Worksheet:
     if _unregistered_ws is not None:
         return _unregistered_ws
 
-    creds = Credentials.from_service_account_file(
-        GOOGLE_CREDENTIALS_PATH, scopes=_SCOPES
-    )
-    client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
-
-    # Use the existing Sheet2 tab
-    _unregistered_ws = spreadsheet.worksheet("Sheet2")
+    try:
+        if GOOGLE_CREDENTIALS_JSON:
+            logger.info("Initializing Google Credentials for unregistered visitors from GOOGLE_CREDENTIALS_JSON env var.")
+            info = json.loads(GOOGLE_CREDENTIALS_JSON)
+            creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
+        else:
+            logger.info(f"Initializing Google Credentials for unregistered visitors from file: {GOOGLE_CREDENTIALS_PATH}")
+            creds = Credentials.from_service_account_file(
+                GOOGLE_CREDENTIALS_PATH, scopes=_SCOPES
+            )
+        client = gspread.authorize(creds)
+        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        # Use the existing Sheet2 tab
+        _unregistered_ws = spreadsheet.worksheet("Sheet2")
+        logger.info("Successfully connected to Google Sheet tab 'Sheet2'.")
+    except Exception as e:
+        logger.error(f"Failed to connect to unregistered visitors worksheet: {e}", exc_info=True)
+        raise e
     return _unregistered_ws
 
 

@@ -12,10 +12,12 @@ Handles:
 import logging
 import datetime
 import random
+import pytz
 
 from telegram.ext import ContextTypes
 
 from bot import sheets
+from bot.config import TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -137,12 +139,18 @@ async def deliver_scheduled_message_job(context: ContextTypes.DEFAULT_TYPE) -> N
 
 def setup_daily_jobs(job_queue) -> None:
     """Register the fixed daily jobs with the JobQueue."""
+    try:
+        tz = pytz.timezone(TIMEZONE)
+    except Exception as e:
+        logger.error(f"Invalid timezone configuration '{TIMEZONE}', falling back to UTC: {e}")
+        tz = pytz.utc
+
     # Run morning tip at 9:00 AM daily
-    t_morning = datetime.time(hour=9, minute=0, second=0)
+    t_morning = datetime.time(hour=9, minute=0, second=0, tzinfo=tz)
     job_queue.run_daily(morning_tip_job, t_morning, name="morning_tip")
     
     # Run progress reminder at 6:00 PM daily
-    t_evening = datetime.time(hour=18, minute=0, second=0)
+    t_evening = datetime.time(hour=18, minute=0, second=0, tzinfo=tz)
     job_queue.run_daily(progress_reminder_job, t_evening, name="evening_progress")
     
-    logger.info("Daily jobs registered: morning_tip (09:00), evening_progress (18:00)")
+    logger.info(f"Daily jobs registered with timezone {tz.zone}: morning_tip (09:00), evening_progress (18:00)")

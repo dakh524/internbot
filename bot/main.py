@@ -7,11 +7,16 @@ Run with:  python -m bot.main
 """
 
 import logging
+import traceback
+import html
+import json
 
-from telegram.ext import ApplicationBuilder
+from telegram import Update
+from telegram.constants import ParseMode
+from telegram.ext import ApplicationBuilder, ContextTypes
 from telegram.request import HTTPXRequest
 
-from bot.config import TELEGRAM_BOT_TOKEN, validate
+from bot.config import TELEGRAM_BOT_TOKEN, validate, ADMIN_IDS
 from bot.handlers.start import get_start_handler
 from bot.handlers.menu import get_menu_handlers
 from bot.handlers.admin import get_admin_handlers
@@ -24,6 +29,38 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer/admin."""
+    # Log the error with traceback
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+    try:
+        # traceback.format_exception returns the list of strings wrapper
+        tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+        tb_string = "".join(tb_list)
+
+        # Build the message
+        update_str = update.to_dict() if isinstance(update, Update) else str(update)
+        message = (
+            f"⚠️ <b>An exception was raised while handling an update</b>\n\n"
+            f"<b>Update:</b>\n<code>{html.escape(json.dumps(update_str, indent=2, ensure_ascii=False))[:1000]}</code>\n\n"
+            f"<b>Traceback:</b>\n<code>{html.escape(tb_string)[:3000]}</code>"
+        )
+
+        # Send message to all admins
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                logger.error(f"Failed to send error notification to admin {admin_id}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to execute error handler: {e}")
 
 
 def main() -> None:
@@ -46,6 +83,9 @@ def main() -> None:
         .get_updates_request(HTTPXRequest(read_timeout=30, write_timeout=30, connect_timeout=30, pool_timeout=30))
         .build()
     )
+
+    # Register global error handler
+    app.add_error_handler(error_handler)
 
     # Register handlers (order matters!)
     # 1. ConversationHandler for /start (must come first)
