@@ -6,6 +6,7 @@ Place this file at: bot/main.py
 Run with:  python -m bot.main
 """
 
+import asyncio
 import logging
 import traceback
 import html
@@ -65,6 +66,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     """Initialize and start the bot."""
+    # Ensure an event loop exists (required for Python 3.10+ / 3.14 on Render)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("Event loop is closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
     # Validate configuration before doing anything else
     validate()
     logger.info("✅ Configuration validated successfully.")
