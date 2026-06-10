@@ -184,4 +184,5 @@ def get_start_handler() -> ConversationHandler:
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,  # Allow /start to restart the flow at any time
     )
