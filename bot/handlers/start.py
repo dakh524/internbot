@@ -38,8 +38,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     if intern is not None:
         # Already verified — restore session data and show menu directly
-        gmail = str(intern.get("Gmail", "")).strip()
-        name = intern.get("Name", "Intern")
+        # Sheet header is lowercase 'gmail'; fall back to 'Gmail' for safety
+        gmail = str(intern.get("gmail") or intern.get("Gmail") or "").strip()
+        name = str(intern.get("Name", "Intern")).strip()
         context.user_data["gmail"] = gmail
         context.user_data["name"] = name
         context.user_data["verified"] = True
