@@ -74,10 +74,31 @@ def refresh_connection() -> None:
 # Read helpers
 # ---------------------------------------------------------------------------
 
+
+# The columns the bot actually reads — passed to get_all_records() so gspread
+# doesn't crash when the sheet contains duplicate or unexpected header names.
+_EXPECTED_HEADERS = [
+    "Name", "Gmail", "Offer Status", "Domain",
+    "Telegram ID", "Task", "Submission Link", "Date", "Status", "Remarks",
+    "Progress", "Resource Link", "Meetings", "Doubts",
+    "NAME (CERTIFICATE)", "College Name", "Project Title",
+    "Completion Date", "Certificate Serial Number", "Certificate Status",
+    "Certificate URL",
+]
+
+
 def get_all_records() -> list[dict]:
     """Return every row as a list of dicts (header → value)."""
     ws = _get_worksheet()
-    return ws.get_all_records()
+    try:
+        return ws.get_all_records(
+            expected_headers=_EXPECTED_HEADERS,
+            numericise_ignore=["all"],   # Keep IDs/serials as strings
+        )
+    except TypeError:
+        # Older gspread versions don't support expected_headers — fall back
+        return ws.get_all_records(numericise_ignore=["all"])
+
 
 
 def find_intern_by_gmail(gmail: str) -> dict | None:
