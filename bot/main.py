@@ -8,10 +8,12 @@ Run with:  python -m bot.main
 
 import asyncio
 import logging
+import os
 import traceback
 import html
 import json
 
+from aiohttp import web
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, ContextTypes
@@ -64,17 +66,39 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"Failed to execute error handler: {e}")
 
 
-def main() -> None:
-    """Initialize and start the bot."""
-    # Ensure an event loop exists (required for Python 3.10+ / 3.14 on Render)
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("Event loop is closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+# ---------------------------------------------------------------------------
+# Health-check HTTP server (required for Render port-scan to pass)
+# ---------------------------------------------------------------------------
 
+async def health_handler(request: web.Request) -> web.Response:
+    """Respond 200 OK with a JSON status payload on GET /."""
+    return web.Response(
+        text=json.dumps({"status": "ok"}),
+        content_type="application/json",
+        status=200,
+    )
+
+
+async def run_health_server() -> None:
+    """Start the aiohttp health-check server on $PORT (default 8080)."""
+    port = int(os.environ.get("PORT", 8080))
+    http_app = web.Application()
+    http_app.router.add_get("/", health_handler)
+    runner = web.AppRunner(http_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info("🌐 Health-check server listening on port %d", port)
+    # Keep the coroutine alive indefinitely so the server stays up.
+    await asyncio.Event().wait()
+
+
+# ---------------------------------------------------------------------------
+# Bot setup
+# ---------------------------------------------------------------------------
+
+async def run_bot() -> None:
+    """Build, configure, and run the Telegram bot using the async lifecycle API."""
     # Validate configuration before doing anything else
     validate()
     logger.info("✅ Configuration validated successfully.")
@@ -90,7 +114,14 @@ def main() -> None:
         ApplicationBuilder()
         .token(TELEGRAM_BOT_TOKEN)
         .request(request)
-        .get_updates_request(HTTPXRequest(read_timeout=30, write_timeout=30, connect_timeout=30, pool_timeout=30))
+        .get_updates_request(
+            HTTPXRequest(
+                read_timeout=30,
+                write_timeout=30,
+                connect_timeout=30,
+                pool_timeout=30,
+            )
+        )
         .build()
     )
 
@@ -116,9 +147,29 @@ def main() -> None:
     else:
         logger.warning("JobQueue is not enabled! Scheduled jobs will not run.")
 
-    # Start polling
+    # Use the lower-level async lifecycle so we can share the event loop
+    # with the health-check server (run_polling() would own the loop itself).
     logger.info("🚀 InternBot is starting...")
-    app.run_polling(drop_pending_updates=True)
+    async with app:
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        # Block here until a stop signal is received (SIGINT / SIGTERM).
+        await asyncio.Event().wait()
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Run the health-check server and the Telegram bot concurrently."""
+    async def _run_all() -> None:
+        await asyncio.gather(
+            run_health_server(),
+            run_bot(),
+        )
+
+    asyncio.run(_run_all())
 
 
 if __name__ == "__main__":
