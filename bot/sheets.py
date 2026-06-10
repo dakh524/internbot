@@ -77,12 +77,13 @@ def refresh_connection() -> None:
 
 # The columns the bot actually reads — passed to get_all_records() so gspread
 # doesn't crash when the sheet contains duplicate or unexpected header names.
+# NOTE: These must EXACTLY match the header row in the Google Sheet (case-sensitive).
 _EXPECTED_HEADERS = [
-    "Name", "Gmail", "Offer Status", "Domain",
-    "Telegram ID", "Task", "Submission Link", "Date", "Status", "Remarks",
-    "Progress", "Resource Link", "Meetings", "Doubts",
+    "Name", "gmail", "Domain", "Offer Status", "Task",
+    "Resource Link", "Progress", "Certificate Approved", "Certificate Serial",
+    "Telegram ID", "Submitted Work", "Doubts", "Meetings",
     "NAME (CERTIFICATE)", "College Name", "Project Title",
-    "Completion Date", "Certificate Serial Number", "Certificate Status",
+    "Completion Date", "Certificate Serial No", "Certificate Status",
     "Certificate URL",
 ]
 
@@ -95,10 +96,19 @@ def get_all_records() -> list[dict]:
             expected_headers=_EXPECTED_HEADERS,
             numericise_ignore=["all"],   # Keep IDs/serials as strings
         )
-    except TypeError:
-        # Older gspread versions don't support expected_headers — fall back
-        return ws.get_all_records(numericise_ignore=["all"])
+    except Exception:
+        # Fall back when the sheet is missing some expected headers
+        # (e.g. certificate columns not yet added) or on older gspread versions.
+        try:
+            return ws.get_all_records(numericise_ignore=["all"])
+        except Exception:
+            return ws.get_all_records()
 
+
+
+def _get_gmail_from_record(record: dict) -> str:
+    """Return the gmail value from a record, handling both 'gmail' and 'Gmail' header variants."""
+    return str(record.get("gmail") or record.get("Gmail") or "").strip()
 
 
 def find_intern_by_gmail(gmail: str) -> dict | None:
@@ -108,7 +118,7 @@ def find_intern_by_gmail(gmail: str) -> dict | None:
     """
     records = get_all_records()
     for record in records:
-        sheet_gmail = str(record.get("Gmail", "")).strip().lower()
+        sheet_gmail = _get_gmail_from_record(record).lower()
         if sheet_gmail == gmail.strip().lower():
             return record
     return None
@@ -237,7 +247,7 @@ def set_intern_progress(gmail: str, progress_text: str) -> bool:
 def get_all_gmails() -> list[str]:
     """Return a list of all intern Gmail addresses (for admin autocomplete)."""
     records = get_all_records()
-    return [str(r.get("Gmail", "")).strip() for r in records if r.get("Gmail")]
+    return [_get_gmail_from_record(r) for r in records if _get_gmail_from_record(r)]
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +272,7 @@ def get_all_interns_summary() -> list[dict]:
     return [
         {
             "Name": r.get("Name", "N/A"),
-            "Gmail": r.get("Gmail", "N/A"),
+            "Gmail": _get_gmail_from_record(r) or "N/A",
             "Offer Status": r.get("Offer Status", "N/A"),
             "Telegram ID": r.get("Telegram ID", "N/A"),
             "Domain": r.get("Domain", "N/A"),
@@ -388,7 +398,7 @@ def get_certificate_data(gmail: str) -> dict | None:
         "college_name": get_val(["College Name", "College"]),
         "project_title": get_val(["Project Title", "Project"]),
         "completion_date": get_val(["Completion Date", "Date"]),
-        "serial_number": get_val(["Certificate Serial Number", "Serial Number", "Serial"]),
+        "serial_number": get_val(["Certificate Serial No", "Certificate Serial Number", "Serial Number", "Serial"]),
         "status": get_val(["Certificate Status", "Status"]),
         "url": get_val(["Certificate URL", "URL", "Certificate Link"]),
     }
@@ -410,7 +420,7 @@ def generate_next_serial_number() -> str:
     for r in records:
         # Check both the specific key and other potential column matching
         serial = ""
-        for k in ["Certificate Serial Number", "Serial Number", "Serial"]:
+        for k in ["Certificate Serial No", "Certificate Serial Number", "Serial Number", "Serial"]:
             for rk in r.keys():
                 if rk.strip().lower() == k.lower():
                     serial = str(r[rk]).strip()
@@ -562,7 +572,7 @@ def get_submitted_tasks() -> list[dict]:
     submitted = []
 
     for record in records:
-        gmail = str(record.get("Gmail", "")).strip()
+        gmail = _get_gmail_from_record(record)
         name = str(record.get("Name", "")).strip()
 
         status = ""
