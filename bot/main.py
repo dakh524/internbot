@@ -13,7 +13,8 @@ import traceback
 import html
 import json
 
-from aiohttp import web
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, ContextTypes
@@ -70,27 +71,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # Health-check HTTP server (required for Render port-scan to pass)
 # ---------------------------------------------------------------------------
 
-async def health_handler(request: web.Request) -> web.Response:
-    """Respond 200 OK with a JSON status payload on GET /."""
-    return web.Response(
-        text=json.dumps({"status": "ok"}),
-        content_type="application/json",
-        status=200,
-    )
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+
+    def log_message(self, format, *args):
+        pass  # Silence default request logging
 
 
-async def run_health_server() -> None:
-    """Start the aiohttp health-check server on $PORT (default 8080)."""
-    port = int(os.environ.get("PORT", 8080))
-    http_app = web.Application()
-    http_app.router.add_get("/", health_handler)
-    runner = web.AppRunner(http_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logger.info("🌐 Health-check server listening on port %d", port)
-    # Keep the coroutine alive indefinitely so the server stays up.
-    await asyncio.Event().wait()
+def run_health_server_thread():
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    logger.info(f"🌐 Health server started on port {port}")
+    server.serve_forever()
 
 
 # ---------------------------------------------------------------------------
@@ -162,14 +157,9 @@ async def run_bot() -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Run the health-check server and the Telegram bot concurrently."""
-    async def _run_all() -> None:
-        await asyncio.gather(
-            run_health_server(),
-            run_bot(),
-        )
-
-    asyncio.run(_run_all())
+    """Start the health-check thread, then run the Telegram bot."""
+    threading.Thread(target=run_health_server_thread, daemon=True).start()
+    asyncio.run(run_bot())
 
 
 if __name__ == "__main__":
