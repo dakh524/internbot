@@ -22,9 +22,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("📅 Meetings", callback_data="menu_meetings"),
-            InlineKeyboardButton("📊 Task Status", callback_data="menu_task_status"),
+            InlineKeyboardButton("📊 Progress", callback_data="menu_progress"),
         ],
         [
+            InlineKeyboardButton("📋 Task Status", callback_data="menu_task_status"),
             InlineKeyboardButton("🎓 Certificate", callback_data="menu_certificate"),
         ],
     ]

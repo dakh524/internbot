@@ -64,22 +64,68 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     name = context.user_data.get("name", "Intern")
     data = query.data
 
-    # Map callback_data → sheet column name & emoji
-    column_map: dict[str, tuple[str, str]] = {
-        "menu_resources":   ("Resource Link",          "📚"),
-        "menu_meetings":    ("Meetings",           "📅"),
-        "menu_progress":    ("Progress",           "📊"),
-    }
-
-    if data in column_map:
-        col_name, emoji = column_map[data]
-        value = sheets.get_intern_data(gmail, col_name)
+    # ---------- Resource Link ----------
+    if data == "menu_resources":
+        value = sheets.get_intern_data(gmail, "Resource Link")
+        if value.startswith("📭"):
+            text = f"📚 <b>Resources</b> for <b>{name}</b>:\n\n📭 No resources assigned yet. Check back soon!"
+        else:
+            text = f"📚 <b>Resources</b> for <b>{name}</b>:\n\n{value}"
         await query.edit_message_text(
-            f"{emoji} *{col_name}* for *{name}*:\n\n{value}",
-            parse_mode="Markdown",
+            text,
+            parse_mode="HTML",
             reply_markup=back_to_menu_keyboard(),
         )
         return
+
+    # ---------- Doubts ----------
+    if data == "menu_doubt":
+        value = sheets.get_intern_data(gmail, "Doubts")
+        if value.startswith("📭"):
+            text = (
+                f"❓ <b>Ask a Doubt</b>\n\n"
+                "Please type your question or doubt below.\n\n"
+                "Type /cancel to go back."
+            )
+            await query.edit_message_text(text, parse_mode="HTML")
+            context.user_data["awaiting"] = "doubt"
+        else:
+            text = f"❓ <b>Your Doubts</b> for <b>{name}</b>:\n\n{value}"
+            await query.edit_message_text(
+                text,
+                parse_mode="HTML",
+                reply_markup=back_to_menu_keyboard(),
+            )
+        return
+
+    # ---------- Meetings ----------
+    if data == "menu_meetings":
+        value = sheets.get_intern_data(gmail, "Meetings")
+        if value.startswith("📭"):
+            text = f"📅 <b>Meetings</b> for <b>{name}</b>:\n\n📭 No meetings scheduled yet. You will be notified soon!"
+        else:
+            text = f"📅 <b>Meetings</b> for <b>{name}</b>:\n\n{value}"
+        await query.edit_message_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=back_to_menu_keyboard(),
+        )
+        return
+
+    # ---------- Progress ----------
+    if data == "menu_progress":
+        value = sheets.get_intern_data(gmail, "Progress")
+        if value.startswith("📭") or not value.strip():
+            text = f"📊 <b>Progress</b> for <b>{name}</b>:\n\n⚪ 0% — No progress recorded yet. Complete your tasks to see progress!"
+        else:
+            text = f"📊 <b>Progress</b> for <b>{name}</b>:\n\n🚀 {value}"
+        await query.edit_message_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=back_to_menu_keyboard(),
+        )
+        return
+
 
     # Handle menu_tasks specifically
     if data == "menu_tasks":
@@ -303,15 +349,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         context.user_data["awaiting"] = "submission"
         return
 
-    if data == "menu_doubt":
-        await query.edit_message_text(
-            "❓ *Ask a Doubt*\n\n"
-            "Please type your question or doubt below.\n\n"
-            "Type /cancel to go back.",
-            parse_mode="Markdown",
-        )
-        context.user_data["awaiting"] = "doubt"
-        return
+
+
 
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
